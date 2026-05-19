@@ -361,6 +361,67 @@ body{
   font-weight:900;
 }
 
+/* Floating Leaderboard Button - show only on Start Page */
+.floating-board-btn{
+  position:fixed;
+  top:16px;
+  right:16px;
+  width:54px;
+  height:54px;
+  border:none;
+  border-radius:50%;
+  background:var(--green-ci);
+  color:#000;
+  font-size:24px;
+  font-weight:900;
+  box-shadow:0 6px 18px rgba(0,0,0,.25);
+  z-index:999;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  font-family:"Prompt", Arial, sans-serif;
+}
+
+.live-board-modal{
+  display:none;
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.45);
+  z-index:1000;
+  padding:18px;
+}
+
+.live-board-modal.active{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.live-board-box{
+  width:100%;
+  max-width:430px;
+  max-height:80vh;
+  overflow:auto;
+  background:#fff;
+  border:4px solid #000;
+  border-radius:26px;
+  padding:22px;
+  position:relative;
+}
+
+.close-board{
+  position:absolute;
+  top:10px;
+  right:14px;
+  border:none;
+  background:none;
+  font-size:30px;
+  font-weight:900;
+  cursor:pointer;
+  font-family:"Prompt", Arial, sans-serif;
+}
+
 @media(max-width:360px){
   .app{padding:16px 12px}
   .game-logo{width:min(78vw,250px)}
@@ -381,6 +442,17 @@ body{
 
 <body>
 <div class="app">
+
+<button id="floatingBoardBtn" class="floating-board-btn" onclick="openLiveBoard()">🏆</button>
+
+<div id="liveBoardModal" class="live-board-modal">
+  <div class="live-board-box">
+    <button class="close-board" onclick="closeLiveBoard()">×</button>
+    <div class="board-title">Leaderboard ล่าสุด</div>
+    <div id="liveBoardContent" class="loading-board">กำลังโหลดอันดับ...</div>
+  </div>
+</div>
+
 
 <section id="startPage" class="page active">
   <img src="images/logo.webp" class="game-logo" alt="แยกดีมีแต้ม Logo">
@@ -549,6 +621,7 @@ function formatTime(seconds){
 function showPage(id){
   document.querySelectorAll(".page").forEach(page => page.classList.remove("active"));
   document.getElementById(id).classList.add("active");
+  updateFloatingBoardButton();
   window.scrollTo(0,0);
 }
 
@@ -766,6 +839,103 @@ function escapeHTML(text){
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
+
+
+function updateFloatingBoardButton(){
+  const startPage = document.getElementById("startPage");
+  const button = document.getElementById("floatingBoardBtn");
+
+  if(!button) return;
+
+  if(startPage.classList.contains("active")){
+    button.style.display = "flex";
+  }else{
+    button.style.display = "none";
+  }
+}
+
+function openLiveBoard(){
+  document.getElementById("liveBoardModal").classList.add("active");
+
+  document.getElementById("liveBoardContent").innerHTML =
+    '<div class="loading-board">กำลังโหลดอันดับล่าสุด...</div>';
+
+  loadLiveBoard();
+}
+
+function closeLiveBoard(){
+  document.getElementById("liveBoardModal").classList.remove("active");
+}
+
+function loadLiveBoard(){
+  const callbackName = "liveBoardCallback_" + Date.now();
+
+  window[callbackName] = function(scores){
+    renderLiveBoard(scores);
+    delete window[callbackName];
+    script.remove();
+  };
+
+  const script = document.createElement("script");
+  script.src = API_URL + "?callback=" + callbackName + "&t=" + Date.now();
+
+  script.onerror = function(){
+    document.getElementById("liveBoardContent").innerHTML =
+      '<div class="loading-board">โหลด Leaderboard ไม่สำเร็จ</div>';
+  };
+
+  document.body.appendChild(script);
+}
+
+function renderLiveBoard(scores){
+  if(!Array.isArray(scores) || scores.length === 0){
+    document.getElementById("liveBoardContent").innerHTML =
+      '<div class="loading-board">ยังไม่มีข้อมูลผู้เล่น</div>';
+    return;
+  }
+
+  const sortedScores = scores.map(score => {
+    const calculatedScore = calculateScore(
+      Number(score.correct),
+      Number(score.time),
+      Number(score.wrong)
+    );
+
+    return {
+      ...score,
+      calculatedScore: calculatedScore
+    };
+  }).sort((a, b) => {
+    if(Number(b.calculatedScore) !== Number(a.calculatedScore)){
+      return Number(b.calculatedScore) - Number(a.calculatedScore);
+    }
+
+    if(Number(a.time) !== Number(b.time)){
+      return Number(a.time) - Number(b.time);
+    }
+
+    return Number(a.wrong) - Number(b.wrong);
+  });
+
+  let html = "";
+
+  sortedScores.slice(0,10).forEach((score, index) => {
+    html += '<div class="board-row">';
+    html += '<div class="board-rank">#' + (index + 1) + '</div>';
+    html += '<div class="board-name">' + escapeHTML(score.name || "BG") + '</div>';
+    html += '<div class="board-time">' 
+      + Number(score.calculatedScore).toFixed(1) + ' pts'
+      + '<small>' + formatTime(Number(score.time)) + '</small>'
+      + '<small>ถูก ' + Number(score.correct) + ' | ผิด ' + Number(score.wrong) + '</small>'
+      + '</div>';
+    html += '</div>';
+  });
+
+  document.getElementById("liveBoardContent").innerHTML = html;
+}
+
+document.addEventListener("DOMContentLoaded", updateFloatingBoardButton);
+
 
 function restartGame(){
   startGame();
